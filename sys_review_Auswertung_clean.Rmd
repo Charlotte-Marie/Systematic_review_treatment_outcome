@@ -16,11 +16,10 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, rows.print 
 # Reinstall all of the packages as declared in renv.lock
 renv::restore()
 
-library(knitr)
+#library(knitr)
 library(readxl)
 
 # Compressed data table
-library(DT)
 library(rempsyc)
 library(officer)
 library(flextable)
@@ -28,7 +27,6 @@ library(flextable)
 # Plotting
 library(plotly)
 library(ggplot2)
-library(extrafont)
 library(RColorBrewer)
 library(patchwork)
 library(ggbeeswarm)
