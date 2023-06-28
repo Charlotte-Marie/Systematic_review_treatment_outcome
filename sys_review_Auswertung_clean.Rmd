@@ -14,7 +14,7 @@ output:
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, rows.print = 3)
 
 # Reinstall all of the packages as declared in renv.lock
-renv::restore()
+# renv::restore()
 
 #library(knitr)
 library(readxl)
@@ -68,14 +68,29 @@ colnames(data_dimreduction) <- gsub(" ","_",colnames(data_dimreduction))
 ```
 
 # RQ 0: Preprocessing of summary table: compress table entries, delete columns, change column names 
-```{r Summary table with only important information}
+```{r Summary table with important information}
 
-## Step 1: reduce table entries
+## Step 1: Modify table entries
 # Column: Responders/nonresponders
 data_sumtable$`Responders/nonresponders` <- gsub(" responders, ","/",data_sumtable$`Responders/nonresponders`)
 data_sumtable$`Responders/nonresponders` <- gsub(" nonresponders","",data_sumtable$`Responders/nonresponders`)
 data_sumtable$`Responders/nonresponders` <- gsub(" remitters, ","/",data_sumtable$`Responders/nonresponders`)
 data_sumtable$`Responders/nonresponders` <- gsub(" nonremitters","",data_sumtable$`Responders/nonresponders`)
+# Add proportion of nonresponders
+# proportion_nonresponders <- character(nrow(data_sumtable))
+# row_idx = 8
+# for (row_idx in 1:nrow(data_sumtable)){
+#   strsplit(data_sumtable$`Responders/nonresponders`[row_idx], "\n")
+#   if
+#   entry
+#   entry <- data_sumtable$`Responders/nonresponders`[row_idx]
+#   responders <- strsplit(data_sumtable$`Responders/nonresponders`[row_idx], c("; \r\n"))[[1]][1]
+#   nonresponders <- strsplit(entry, "/")[[1]][2]
+#   proportion <- round(as.numeric(nonresponders)/(as.numeric(responders)+as.numeric(nonresponders))*100,0)
+#   entry <- paste(data_sumtable$`Responders/nonresponders`[row_idx]," (",proportion,"%)", sep = "")
+# }
+
+
 
 # Column: Treatment
 data_sumtable$Treatment <- gsub("atypical antipsychotics","AAP",data_sumtable$Treatment)
@@ -214,8 +229,8 @@ plot_acc_contr_violin_rob <- ggplot(data = data_acc_long, aes(y =`metric`, x = `
 plot_acc_contr_violin
 plot_acc_contr_violin_rob
 
-ggsave("plots/violin_acc_normal_and_controlled.svg",plot_acc_contr_violin)
-ggsave("plots/violin_acc_normal_and_controlled_rob.svg",plot_acc_contr_violin_rob, height = 4)
+ggsave("plots/violin_acc_normal_and_controlled.eps",plot_acc_contr_violin)
+ggsave("plots/violin_acc_normal_and_controlled_rob.eps",plot_acc_contr_violin_rob, height = 4)
 ```
 
 ## Plot sample size and balanced accuracy for each treatment type
@@ -268,8 +283,8 @@ plot_combined <- plot_acc_contr_violin_rob + plot_acc_contr_sampel_size + plot_a
 plot_acc_contr_sampel_size
 plot_combined
 
-ggsave("plots/plot_samplesize.svg",plot_acc_contr_sampel_size, height = 4)
-ggsave("plots/plot_combined.svg",plot_combined, height = 3.5)
+ggsave("plots/plot_samplesize.eps",plot_acc_contr_sampel_size, height = 4)
+ggsave("plots/plot_combined.eps",plot_combined, height = 3.5)
 ```
 
 # RQ 2.1: Which approaches are taken to draw inferences about the predictive value of specific features? 
@@ -420,7 +435,7 @@ plot_feat_pred_value_2 <- ggplot(data = data_ROIs_only_tested_high_freq, aes(x =
 # Safe plot with sensible defaults
 plot_feat_pred_value_2
 
-ggsave("plots/plot_feat_pred_value.svg",plot_feat_pred_value_2, height = 4)
+ggsave("plots/plot_feat_pred_value.eps",plot_feat_pred_value_2, height = 4)
 ```
 
 # RQ 3: Which approaches are taken to reduce the large amount of theoretically initially available functional connectivities to a small set of features to be used in the final classifier(s)? 
@@ -492,5 +507,5 @@ plot_PROBAST <- ggplot(data = data_PROBAST_plot_long,aes(x = `Rating_domain`, fi
 
 # Safe plot with sensible defaults
 plot_PROBAST
-ggsave("plots/plot_PROBAST.svg",plot_PROBAST, height = 4.5, width = 9)
+ggsave("plots/plot_PROBAST.eps",plot_PROBAST, height = 4.5, width = 9)
 ```
