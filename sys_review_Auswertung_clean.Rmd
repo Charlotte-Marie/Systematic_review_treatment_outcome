@@ -31,14 +31,18 @@ library(RColorBrewer)
 library(patchwork)
 library(ggbeeswarm)
 
-## General settings for ggplot
-#font_import()
-#loadfonts(device = "win")
+# General settings for ggplot
+# Specific fonts are needed for figure 1 (Lucida Helvetica Unicode)
+library(extrafont)
+#font_import() # run only after installing and loading extrafont
+loadfonts(device = "win")
+loadfonts(device = "postscript")
+
 size_text = 10
-theme_set(theme_bw() + theme(text = element_text(size =size_text, family = "sans"),
-                             axis.title = element_text(size =size_text, family = "sans"), plot.title = element_text(size = size_text, family = "sans"),
-                             axis.text = element_text(size = size_text, family = "sans"),
-                             legend.text =  element_text(size =size_text-1, family = "sans")))
+theme_set(theme_bw() + theme(text = element_text(size =size_text, family = "Helvetica"),
+                             axis.title = element_text(size =size_text, family = "Helvetica"), plot.title = element_text(size = size_text, family = "Helvetica"),
+                             axis.text = element_text(size = size_text, family = "Helvetica"),
+                             legend.text =  element_text(size =size_text-1, family = "Helvetica")))
 # Set default for geom_text
 update_geom_defaults("text", list(size = 4))
 
@@ -229,8 +233,8 @@ plot_acc_contr_violin_rob <- ggplot(data = data_acc_long, aes(y =`metric`, x = `
 plot_acc_contr_violin
 plot_acc_contr_violin_rob
 
-ggsave("plots/violin_acc_normal_and_controlled.eps",plot_acc_contr_violin)
-ggsave("plots/violin_acc_normal_and_controlled_rob.eps",plot_acc_contr_violin_rob, height = 4)
+ggsave("plots/violin_acc_normal_and_controlled.eps",device="eps",family = "Helvetica", plot_acc_contr_violin)
+ggsave("plots/violin_acc_normal_and_controlled_rob.eps",device="eps",family = "Helvetica", plot_acc_contr_violin_rob, height = 4)
 ```
 
 ## Plot sample size and balanced accuracy for each treatment type
@@ -246,7 +250,7 @@ pos_half_vert = 0.4
 pos_half_horiz = 0.2
 
 # Plot sample size and balanced accuracy
-plot_acc_contr_sampel_size <- ggplot(data = data_acc, aes(y =`Accuracy_controlled`, x = `Sample_size`))+
+plot_acc_contr_sample_size <- ggplot(data = data_acc, aes(y =`Accuracy_controlled`, x = `Sample_size`))+
     theme(text = element_text(family = "Arial"))+
   geom_point(aes(color = `Treatment`), size = size_dots)+ #draw point for all treatments
   geom_text(data = data_acc[data_acc$Treatment == "medication and psychotherapy",],
@@ -276,15 +280,19 @@ plot_acc_contr_sampel_size <- ggplot(data = data_acc, aes(y =`Accuracy_controlle
   theme(legend.title=element_blank()) +
   guides(color = guide_legend(nrow = 2, byrow = TRUE))
 
-# Combine both plots (Accuray with risk of bias and Sample size and balanced accuracy)
-plot_combined <- plot_acc_contr_violin_rob + plot_acc_contr_sampel_size + plot_annotation(tag_levels = "A") + plot_layout(ncol=2)
+plot_acc_contr_sample_size
 
-# Display and safe plots with sensible defaults
-plot_acc_contr_sampel_size
+ggsave("plots/plot_samplesize.eps",plot_acc_contr_sample_size ,device = "eps", height = 4)
+```
+
+## Figure 1: Combine plots
+```{r}
+# Combine both plots (Accuracy with risk of bias and Sample size and balanced accuracy)
+plot_combined <- plot_acc_contr_violin_rob + plot_acc_contr_sample_size + plot_annotation(tag_levels = "A") + plot_layout(ncol=2)
+
 plot_combined
 
-ggsave("plots/plot_samplesize.eps",plot_acc_contr_sampel_size, height = 4)
-ggsave("plots/plot_combined.eps",plot_combined, height = 3.5)
+ggsave("plots/figure_1_acc_sample_size.eps",plot_combined,device="eps",family = "Helvetica", height = 3.5)
 ```
 
 # RQ 2.1: Which approaches are taken to draw inferences about the predictive value of specific features? 
@@ -396,7 +404,7 @@ Regions_high_freq <- temp_dataset$Var1
 data_ROIs_only_tested$Region <- factor(data_ROIs_only_tested$Region, levels = Regions_high_freq)
 ```
 
-## Plot feature importance (predicive value in absolute and relative frequencies) 
+## Figure 2: Plot feature importance (predictive value in absolute and relative frequencies) 
 This plot shows whose connectivities were particularily important for the prediction of TR.
 
 ```{r Bar plot}
@@ -435,7 +443,7 @@ plot_feat_pred_value_2 <- ggplot(data = data_ROIs_only_tested_high_freq, aes(x =
 # Safe plot with sensible defaults
 plot_feat_pred_value_2
 
-ggsave("plots/plot_feat_pred_value.eps",plot_feat_pred_value_2, height = 4)
+ggsave("plots/figure_2_predictive_value.eps",plot_feat_pred_value_2, device="eps",family = "Helvetica",height = 4)
 ```
 
 # RQ 3: Which approaches are taken to reduce the large amount of theoretically initially available functional connectivities to a small set of features to be used in the final classifier(s)? 
@@ -461,14 +469,14 @@ cols_feat_extract <- colnames(data_dimreduction)[7:9]
 
 plot_reduction_extraction <- ggplot2::ggplot(data = data_dimreduction_long[(!(is.na(data_dimreduction_long$applied))& data_dimreduction_long$time %in% cols_feat_extract),],aes(x = `time`, color = `Study`))+
   geom_bar() +
-  theme(legend.position = "none", plot.title = element_text(size =14))+ 
+  theme(legend.position = "none", plot.title = element_text(size=14))+ 
   coord_flip() +
   xlab("")+
   ggtitle("Feature selection")
 ggplotly(plot_reduction_extraction)
 ```
 
-# RQ 4: PROBAST 
+# RQ 4: PROBAST rating
 
 ```{r Plot_PROBAST}
 
@@ -507,5 +515,5 @@ plot_PROBAST <- ggplot(data = data_PROBAST_plot_long,aes(x = `Rating_domain`, fi
 
 # Safe plot with sensible defaults
 plot_PROBAST
-ggsave("plots/plot_PROBAST.eps",plot_PROBAST, height = 4.5, width = 9)
+ggsave("plots/plot_PROBAST.eps",plot_PROBAST, device = "eps", height = 4.5, width = 9)
 ```
