@@ -1,4 +1,4 @@
-# Analysis_sys_review
+# Systematic_review_treatment_outcome
 
 
 This OSF-project belongs to the paper: Meinke, C., Ulrike, L., Walter, H., & Hilbert, K. Predicting treatment outcome in internalizing mental disorders based on resting-state functional connectivity: A systematic review of machine learning studies. (Manuscript in preparation)
