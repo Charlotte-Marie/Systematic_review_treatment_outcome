@@ -1,0 +1,42 @@
+---
+title: "PROBAST assessment"
+author: "Till Adam"
+date: "2023-12-20"
+output: html_document
+---
+
+
+```{r}
+#Load Packages
+library(readxl)
+library(flextable)
+library(tidyverse)
+```
+
+```{r}
+#Loading and adjusting table
+PROBAST <- readxl::read_excel(path = "Z:/PsyThera/Projekte_Meinke/Systematic_review/4_PROBAST_assessmentPROBAST_assessment.xlsx", sheet = "Main", col_names = FALSE)
+
+PROBAST_transposed <- t(PROBAST)
+PROBAST_transposed <- as.data.frame(PROBAST_transposed)
+colnames(PROBAST_transposed) <- PROBAST_transposed[1, ]
+PROBAST_transposed <- PROBAST_transposed[-1, ]
+colnames(PROBAST_transposed)[1] <- "Domain"
+colnames(PROBAST_transposed)[2] <- "Question"
+PROBAST_transposed <- PROBAST_transposed[!grepl("comments", PROBAST_transposed[, 2]), ]
+
+PROBAST_transposed
+colnames(PROBAST_transposed)
+str(PROBAST_transposed)
+```
+
+```{r}
+#Create flextable 
+
+ft <- flextable(PROBAST_transposed)
+
+ft <- set_table_properties(ft, width = 1, layout = "autofit")
+ft <- autofit(ft)
+
+flextable::save_as_docx(ft, path = "Z:/PsyThera/Projekte_Meinke/Systematic_review/4_PROBAST_assessment/PROBAST.docx", pr_section = format_table)
+```
