@@ -41,9 +41,9 @@ PROBAST_transposed <- t(PROBAST)
 PROBAST_transposed <- as.data.frame(PROBAST_transposed)
 colnames(PROBAST_transposed) <- PROBAST_transposed[1, ]
 PROBAST_transposed <- PROBAST_transposed[-1, ]
-colnames(PROBAST_transposed)[1] <- "Domain"
-colnames(PROBAST_transposed)[2] <- "Question"
-PROBAST_transposed <- PROBAST_transposed[!grepl("comment", PROBAST_transposed[, 2]), ]
+PROBAST_transposed <- PROBAST_transposed[,-1]
+colnames(PROBAST_transposed)[1] <- "Question"
+PROBAST_transposed <- PROBAST_transposed[!grepl("comment", PROBAST_transposed[, 1]), ]
 
 PROBAST_transposed
 colnames(PROBAST_transposed)
@@ -55,19 +55,26 @@ str(PROBAST_transposed)
 # More info about settings in flextable: https://ardata-fr.github.io/flextable-book/cell-content.html
 
 # Set defaults
-set_flextable_defaults(font.family = "Arial",
-font.size = 8,
-padding.bottom = 3,
-padding.top = 3,
-padding.left = 0.5,
-paddings.right = 0.5,
-#theme_fun = "theme_apa",
-theme_fun = NULL,
-text.align = "left",
-line_spacing = 1.5)
+set_flextable_defaults(
+  font.size = 6,  # Smaller font size
+  line_spacing = 1,  # Reduced line spacing
+  padding.bottom = 2,
+  padding.top = 2,
+  padding.left = 0.2,
+  padding.right = 0.2
+)
 
 # Initialize flex_table
 apa_sumtable <- flextable(PROBAST_transposed)
+
+#Subdividing table
+apa_sumtable <- hline(apa_sumtable, part = "body", i = c(3, 7, 14, 24), 
+                      border = fp_border(color = "black", width = 1))
+
+apa_sumtable <- bg(apa_sumtable, part = "body", i = c(3, 7, 14, 24), 
+                   bg = "lightblue")
+apa_sumtable <- bg(apa_sumtable, part = "body", i = c(25), 
+                   bg = "turquoise")
 
 # Set table properties
 apa_sumtable <- set_table_properties(apa_sumtable, width = 1, layout = "autofit")
