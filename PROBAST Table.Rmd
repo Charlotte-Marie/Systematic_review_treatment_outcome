@@ -13,6 +13,26 @@ library(flextable)
 library(tidyverse)
 ```
 
+```{r Setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+# Reinstall all of the packages as declared in renv.lock
+# renv::restore()
+
+#library(knitr)
+library(readxl)
+
+# Compressed data table
+library(officer)
+library(flextable)
+
+# Plotting
+library(plotly)
+library(ggplot2)
+library(RColorBrewer)
+library(patchwork)
+```
+
 ```{r}
 #Loading and adjusting table
 PROBAST <- readxl::read_excel(path = "Z:/PsyThera/Projekte_Meinke/Systematic_review/4_PROBAST_assessmentPROBAST_assessment.xlsx", sheet = "Main", col_names = FALSE)
@@ -23,20 +43,48 @@ colnames(PROBAST_transposed) <- PROBAST_transposed[1, ]
 PROBAST_transposed <- PROBAST_transposed[-1, ]
 colnames(PROBAST_transposed)[1] <- "Domain"
 colnames(PROBAST_transposed)[2] <- "Question"
-PROBAST_transposed <- PROBAST_transposed[!grepl("comments", PROBAST_transposed[, 2]), ]
+PROBAST_transposed <- PROBAST_transposed[!grepl("comment", PROBAST_transposed[, 2]), ]
 
 PROBAST_transposed
 colnames(PROBAST_transposed)
 str(PROBAST_transposed)
 ```
 
-```{r}
-#Create flextable 
+## Create flextable of summary table for publication
+```{r Flextable, results = "show"}
+# More info about settings in flextable: https://ardata-fr.github.io/flextable-book/cell-content.html
 
-ft <- flextable(PROBAST_transposed)
+# Set defaults
+set_flextable_defaults(font.family = "Arial",
+font.size = 8,
+padding.bottom = 3,
+padding.top = 3,
+padding.left = 0.5,
+paddings.right = 0.5,
+#theme_fun = "theme_apa",
+theme_fun = NULL,
+text.align = "left",
+line_spacing = 1.5)
 
-ft <- set_table_properties(ft, width = 1, layout = "autofit")
-ft <- autofit(ft)
+# Initialize flex_table
+apa_sumtable <- flextable(PROBAST_transposed)
+
+# Set table properties
+apa_sumtable <- set_table_properties(apa_sumtable, width = 1, layout = "autofit")
+
+# Save flextable to word
+margins <- page_mar(
+  bottom = 0.5,
+  top = 0.5,
+  right = 0.5,
+  left = 0.5,
+  header = 0.5,
+  footer = 0.5,
+  gutter = 0.5
+)
+format_table <- prop_section(
+  page_size = page_size(orient = "landscape"),
+  page_margins = margins)
 
 flextable::save_as_docx(ft, path = "Z:/PsyThera/Projekte_Meinke/Systematic_review/4_PROBAST_assessment/PROBAST.docx", pr_section = format_table)
 ```
