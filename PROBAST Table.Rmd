@@ -35,7 +35,7 @@ library(patchwork)
 
 ```{r}
 #Loading and adjusting table
-PROBAST <- readxl::read_excel(path = "Z:/PsyThera/Projekte_Meinke/Systematic_review/4_PROBAST_assessmentPROBAST_assessment.xlsx", sheet = "Main", col_names = FALSE)
+PROBAST <- readxl::read_excel(path = "Z:/PsyThera/Projekte_Meinke/Systematic_review/4_PROBAST_assessment/PROBAST_assessment.xlsx", sheet = "Main", col_names = FALSE)
 
 PROBAST_transposed <- t(PROBAST)
 PROBAST_transposed <- as.data.frame(PROBAST_transposed)
@@ -43,6 +43,7 @@ colnames(PROBAST_transposed) <- PROBAST_transposed[1, ]
 PROBAST_transposed <- PROBAST_transposed[-1, ]
 PROBAST_transposed <- PROBAST_transposed[,-1]
 colnames(PROBAST_transposed)[1] <- "Question"
+PROBAST_transposed$Question <- gsub("\n", "", PROBAST_transposed$Question)
 PROBAST_transposed <- PROBAST_transposed[!grepl("comment", PROBAST_transposed[, 1]), ]
 
 PROBAST_transposed
@@ -77,21 +78,11 @@ apa_sumtable <- bg(apa_sumtable, part = "body", i = c(25),
                    bg = "turquoise")
 
 # Set table properties
-apa_sumtable <- set_table_properties(apa_sumtable, width = 1, layout = "autofit")
+apa_sumtable <- set_table_properties(apa_sumtable, width = 1, layout = "autofit", align = "center")
 
 # Save flextable to word
-margins <- page_mar(
-  bottom = 0.5,
-  top = 0.5,
-  right = 0.5,
-  left = 0.5,
-  header = 0.5,
-  footer = 0.5,
-  gutter = 0.5
-)
 format_table <- prop_section(
-  page_size = page_size(orient = "landscape"),
-  page_margins = margins)
+  page_size = page_size(orient = "landscape"))
 
-flextable::save_as_docx(ft, path = "Z:/PsyThera/Projekte_Meinke/Systematic_review/4_PROBAST_assessment/PROBAST.docx", pr_section = format_table)
+flextable::save_as_docx(apa_sumtable, path = "Z:/PsyThera/Projekte_Meinke/Systematic_review/4_PROBAST_assessment/PROBAST.docx", pr_section = format_table)
 ```
