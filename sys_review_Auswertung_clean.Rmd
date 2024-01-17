@@ -50,6 +50,15 @@ size_dots = 2.8
 color_pal <- brewer.pal(4, "Set1")
 
 # Settings for flextable
+margins <- page_mar(
+  bottom = 0.5,
+  top = 0.5,
+  right = 0.5,
+  left = 0.5,
+  header = 0.5,
+  footer = 0.5,
+  gutter = 0.5
+)
 format_table_portrait <- prop_section(
   page_size = page_size(orient = "portrait"),
   page_margins = margins)
@@ -178,7 +187,11 @@ flextable::save_as_docx(apa_sumtable, path = "plots/table_1_extraction.docx", pr
 
 data_sumtable
 ```
-# RQ 1: Accuracy - meta-analysis
+# RQ 1: Meta-analysis of balanced accuracy values
+## Figure 1a: Visualize differences between balanced and reported accuracies
+```{r}
+```
+
 ## Add variables to data_acc
 ```{r}
 data_acc_meta <- merge(data_acc, data_sumtable[,c("Study","Primary disorder")])
@@ -194,6 +207,7 @@ data_acc_meta$ROB <- ifelse(data_acc_meta$Study %in% studies_low_ROB, "low risk 
 ## Pooling accuracy values
 ```{r}
 library(meta)
+library(metafor)
 # Add column with correctly classified classes per study
 data_acc_meta$n_correct_cases <- round(data_acc_meta$Balanced_acc_final * 0.01 * data_acc_meta$Sample_size,0)
 
@@ -212,32 +226,42 @@ m.prop <- metaprop(event = n_correct_cases,
                    hakn = TRUE, # Hartung-Knapp adjustment
                    title = "Predicting treatment response")
 summary(m.prop)
+```
 
+## Figure 2: Forest plot
+```{r}
 # Forest plot
-forest.meta(m.prop, 
-            sortvar = TE,
-            prediction = TRUE, 
-            print.tau2 = FALSE,
-            rightlabs = c("Balanced accuracy", "95%-CI", "Weight")
-            #leftlabs = c("Study",)
-            )
+svg(file='plots/forestplot.svg', width = 9, height = 5)
+forest_plot <- forest(m.prop, 
+       sortvar = TE,
+       prediction = TRUE, 
+       print.tau2 = FALSE,
+       rightlabs = c("Balanced accuracy", "95%-CI", "Weight")
+       #leftlabs = c("Study",)
+       )
+dev.off() 
+forest_plot
+```
 
-funnel.meta(m.prop)
+## Optional: Publication bias
+Please note that we did not report the publication bias in our meta-analysis as this is not recommended in the case of high heterogeneity.
+```{r, echo = FALSE}
+funnel(m.prop)
 metabias(m.prop)
 metabias(m.prop, method.bias = "peters")
 ```
 
-## meta regression
+## Meta regression
 ```{r}
-update.meta(m.prop, 
+update(m.prop, 
             subgroup = Treatment, 
             tau.common = FALSE)
 
-update.meta(m.prop, 
+update(m.prop, 
             subgroup = Primary_disorder, 
             tau.common = FALSE)
 
-update.meta(m.prop, 
+update(m.prop, 
             subgroup = ROB, 
             tau.common = FALSE)
 
@@ -249,14 +273,14 @@ bubble(m.prop.reg, studlab = TRUE)
 
 The type of treatment has no substantial effect on the accuracy or heterogeneity.
 MDD alone is not much different.
-Risk of dataleakage has small effect.
+Risk of data leakage has small effect.
 The sample size has a substantial effect on the accuracy.
 
 
-# RQ 1: Accuracy
+# Optional RQ 1: Focus on mean (approach before including the meta-analysis)
 
 ## Calculate reported and balanced accuracy of the best model
-The mean accuracy of the best model per study is  `r round(mean(data_acc$Reported_Reported_Accuracy_rounded))`%, with a range of `r min(data_acc$Reported_Reported_Accuracy_rounded)`% - `r max(data_acc$Reported_Reported_Accuracy_rounded)`%.
+The mean raw accuracy of the best model per study is  `r round(mean(data_acc$Reported_Accuracy_rounded))`%, with a range of `r min(data_acc$Reported_Accuracy_rounded)`% - `r max(data_acc$Reported_Accuracy_rounded)`%.
 The "balanced mean accuracy" is `r round(mean(data_acc$Balanced_acc_final))`%, with a range of `r min(data_acc$Balanced_acc_final)`% - `r max(data_acc$Balanced_acc_final)`%.
 
 ## Plot reported and balanced accuracy without (1) and with risk of data leakage (2)
@@ -267,10 +291,20 @@ studies_low_ROB <- c(data_PROBAST[data_PROBAST$`4.8 Were model overfitting and o
 data_acc$ROB <- ifelse(data_acc$Study %in% studies_low_ROB, "low risk of data leakage", "high risk of data leakage")
 
 # Bring data_acc into longformat
-data_acc_long <- reshape(data = data_acc, idvar = "Study", varying = c("Reported_Reported_Accuracy_rounded","Balanced_acc_final"), v.name = "metric", times = c("Reported_Reported_Accuracy_rounded","Balanced_acc_final"), new.row.names = 1:1000, direction = "long")
+data_acc_long <- reshape(data = data_acc, idvar = "Study", varying = c("Reported_Accuracy_rounded","Balanced_acc_final"), v.name = "metric", times = c("Reported_Accuracy_rounded","Balanced_acc_final"), new.row.names = 1:1000, direction = "long")
 
 data_acc_long$time <- as.factor(data_acc_long$time)
 data_acc_long$time <- factor(data_acc_long$time, levels = c("Reported_Accuracy_rounded", "Balanced_acc_final"))
+```
+
+### Plot raw and balanced acc
+```{r }
+ggplot(data_acc_long, aes (x = Study, y = metric, color = time)) +
+  geom_point(size = 4) +
+  coord_flip()
+```
+
+```{r}
 
 # Plot data without risk of bias 
 labels_acc_germ <- c("berichtete Genauigkeit","für Zufallsniveau\nkontrollierte Genauigkeit")
@@ -316,9 +350,11 @@ ggsave("plots/violin_acc_normal_and_controlled.svg", plot_acc_contr_violin)
 ggsave("plots/violin_acc_normal_and_controlled_rob.svg",plot_acc_contr_violin_rob, height = 4)
 ```
 
-## Plot sample size and balanced accuracy for each treatment type
+## Figure 2b: Sample size and balanced accuracy for each treatment type
 The mean sample size was N = `r round(mean(data_acc$Sample_size),0)`, with a range of [`r min(data_acc$Sample_size)`, `r max(data_acc$Sample_size)`].
 ```{r Plot sample size and balanced accuracy}
+# Add weights from the random effects model
+data_acc$weight <- m.prop[["w.random"]]
 
 # Add column for type of treatment manually to data_acc
 data_acc$Treatment <- c("rTMS","medication","rTMS","medication","ECT","medication","medication and psychotherapy","ECT","medication","ECT","medication","psychotherapy","psychotherapy")
@@ -329,9 +365,10 @@ pos_half_vert = 0.4
 pos_half_horiz = 0.2
 
 # Plot sample size and balanced accuracy
-plot_acc_contr_sample_size <- ggplot(data = data_acc, aes(y =`Balanced_acc_final`, x = `Sample_size`))+
+plot_acc_contr_sample_size <- ggplot(data = data_acc, aes(y =`Balanced_acc_final`, x = `Sample_size`, size = `weight`))+
     theme(text = element_text(family = "Arial"))+
-  geom_point(aes(color = `Treatment`), size = size_dots)+ #draw point for all treatments
+  geom_point(aes(color = `Treatment`))+ #draw point for all treatments
+  scale_size(range = c(3,8)) +
   geom_text(data = data_acc[data_acc$Treatment == "medication and psychotherapy",],
             label = "\u25D7", 
             aes(`Sample_size`, `Balanced_acc_final`,colour = "medication"),  
@@ -354,12 +391,14 @@ plot_acc_contr_sample_size <- ggplot(data = data_acc, aes(y =`Balanced_acc_final
   )+
   geom_smooth(method = "lm", color = "black", size = 0.5)+
   labs(y = "Balanced accuracy in %", x = "Sample size")+
-  scale_x_continuous(limits=c(15,147), breaks = c(25,50,75,100,125,150)) +
+  scale_x_continuous(limits=c(0,147), breaks = c(0,25,50,75,100,125,150)) +
     theme(legend.position = "bottom")+
   theme(legend.title=element_blank()) +
   guides(color = guide_legend(nrow = 2, byrow = TRUE))
 
 ggsave("plots/plot_samplesize.svg",plot_acc_contr_sample_size, height = 4)
+
+plot_acc_contr_sample_size
 ```
 
 ## Figure 2: Combine plots
@@ -412,6 +451,7 @@ ft <- autofit(ft)
 
 flextable::save_as_docx(ft, path = "plots/RQ2.1_table.docx", pr_section = format_table_portrait)
 
+data_imp_features_table
 ```
 
 ## Plot approaches predictive value
@@ -440,6 +480,8 @@ plot_measure_imp <- ggplot2::ggplot(data = data_imp_features_clean_way,aes(x = `
   xlab("")+
   coord_flip()+
   ggtitle("Ways to measure high predictive value")
+
+library(plotly)
 ggplotly(plot_measure_imp)
 ```
 
@@ -459,13 +501,14 @@ colnames(data_imp_features_level_table) <- gsub("_"," ",colnames(data_imp_featur
 data_imp_features_level_table$`Type of FC-based input features` <- gsub("[(]wb:.*)","",data_imp_features_level_table$`Type of FC-based input features`)
 
 
-
 ft <- flextable(data_imp_features_level_table)
 
 ft <- set_table_properties(ft, layout = "autofit")
 ft <- autofit(ft)
 
 flextable::save_as_docx(ft, path = "plots/RQ2.2_resolution.docx", pr_section = format_table)
+
+data_imp_features_level_table
 ```
 
 ## Bring data into long-format
@@ -589,7 +632,7 @@ ggsave("plots/figure_3_predictive_value.svg",plot_feat_pred_value_2,height = 4)
 # Reduce to important columns
 data_dimreduction_table <- data_dimreduction[, !(names(data_dimreduction) %in% c("Year", "Comments")), drop = FALSE]
 
-colnames(data_dimreduction_table ) <- gsub("_"," ",colnames(data_dimreduction_table ))
+colnames(data_dimreduction_table) <- gsub("_"," ",colnames(data_dimreduction_table))
 
 # Flextable
 set_flextable_defaults(font.family = "Arial",
@@ -612,29 +655,32 @@ ft <- hrule(ft, rule = "exact", part = "header")
 ft <- set_table_properties(ft, layout = "autofit")
 
 flextable::save_as_docx(ft, path = "plots/RQ3_table.docx", pr_section = format_table_portrait)
+
+data_dimreduction_table
 ```
 
 ## Plot
 ```{r RQ 3 Approaches used to reduce the number of input features}
 
 # Bring data into longformat
-cols_reduction <- colnames(data_dimreduction)[4:9]
-data_dimreduction_long <- reshape(data = data_dimreduction, idvar = "Study",varying = cols_reduction, v.name = "applied", times = cols_reduction, new.row.names = 1:1000, direction = "long")
+cols_reduction <- c("atlas-based_parcellation", "data-driven_parcellation", "theory-based_selection")
+cols_feat_extract <- colnames(data_dimreduction)[!(colnames(data_dimreduction) %in% c("Study","Year","Approach_to_reduce_the_number_of_initially_available_connectivities","Comments",cols_reduction))]
+
+
+data_dimreduction_long <- reshape(data = data_dimreduction, idvar = "Study",varying = c(cols_reduction,cols_feat_extract), v.name = "applied", times = c(cols_reduction,cols_feat_extract), new.row.names = 1:1000, direction = "long")
 
 # Plot for feature generation
-plot_reduction_generation <- ggplot(data = data_dimreduction_long[(!(is.na(data_dimreduction_long$applied))& data_dimreduction_long$time %in% c("atlas-based_parcellation", "data-driven_parcellation", "theory-based_ROI-/connectivity-selection")),],aes(x = `time`, color = `Study`))+
+plot_reduction_generation <- ggplot(data = data_dimreduction_long[((data_dimreduction_long$applied == "y")& data_dimreduction_long$time %in% cols_reduction),],aes(x = `time`, color = `Study`))+
   geom_bar() +
   coord_flip() +
   xlab("")+
   theme(legend.position = "none", plot.title = element_text(size =14))+ 
   ggtitle("Feature generation")
-
 ggplotly(plot_reduction_generation)
 
 # Plot for feature extraction
-cols_feat_extract <- colnames(data_dimreduction)[7:9]
 
-plot_reduction_extraction <- ggplot2::ggplot(data = data_dimreduction_long[(!(is.na(data_dimreduction_long$applied))& data_dimreduction_long$time %in% cols_feat_extract),],aes(x = `time`, color = `Study`))+
+plot_reduction_extraction <- ggplot2::ggplot(data = data_dimreduction_long[((data_dimreduction_long$applied == "y")& data_dimreduction_long$time %in% cols_feat_extract),],aes(x = `time`, color = `Study`))+
   geom_bar() +
   theme(legend.position = "none", plot.title = element_text(size=14))+ 
   coord_flip() +
@@ -684,7 +730,7 @@ flextable::save_as_docx(ft, path = "plots/PROBAST_table.docx", pr_section = form
 ## Plot 
 ```{r Plot_PROBAST}
 # Final rating columns
-cols_final_rating <- c("Final rating domain 1", "Final rating domain 2", "Final rating domain 3", "Final rating domain 4", "Final rating")
+cols_final_rating <- c("Final rating domain 1 (risk of bias)", "Final rating domain 2 (risk of bias)", "Final rating domain 3 (risk of bias)", "Final rating domain 4 (risk of bias)", "Final rating total (risk of bias)")
 
 data_PROBAST_plot <- data_PROBAST[c("Study",cols_final_rating)]
 
@@ -695,7 +741,7 @@ colnames(data_PROBAST_plot_long)[colnames(data_PROBAST_plot_long)=="time"] <- 'R
 # Order and rename factor rating_domain
 PROBAST_domains_eng <- c("ROB Sample","ROB Predictors", "ROB Outcome", "ROB Analysis", "ROB Total")
 data_PROBAST_plot_long$Rating_domain <- factor(data_PROBAST_plot_long$Rating_domain, 
-                                               levels = c("Final rating domain 1", "Final rating domain 2", "Final rating domain 3", "Final rating domain 4", "Final rating"), labels = PROBAST_domains_eng)
+                                               levels = cols_final_rating, labels = PROBAST_domains_eng)
 
 scaleFUN <- function(x) x*100
 
