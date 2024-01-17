@@ -15,6 +15,7 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 
 # Reinstall all of the packages as declared in renv.lock
 # renv::restore()
+library(dplyr)
 
 #library(knitr)
 library(readxl)
@@ -24,7 +25,7 @@ library(officer)
 library(flextable)
 
 # Plotting
-library(plotly)
+#library(plotly)
 library(ggplot2)
 library(RColorBrewer)
 library(patchwork)
@@ -47,8 +48,14 @@ update_geom_defaults("text", list(size = 4))
 
 size_dots = 2.8
 color_pal <- brewer.pal(4, "Set1")
+
+# Settings for flextable
+format_table_portrait <- prop_section(
+  page_size = page_size(orient = "portrait"),
+  page_margins = margins)
 ```
 
+# Import excel sheets
 ```{r Import excel sheets, results = 'hide'}
 
 data_sumtable <-
@@ -120,7 +127,7 @@ data_sumtable$Year <- NULL
 
 ## Step 3: change column names
 colnames(data_sumtable) <- gsub("Sample size","N",colnames(data_sumtable))
-colnames(data_sumtable) <- gsub("Accuracy_rounded","Best Acc",colnames(data_sumtable))
+colnames(data_sumtable) <- gsub("Balanced_acc_final","Best Acc",colnames(data_sumtable))
 colnames(data_sumtable) <- gsub("Responders/nonresponders","Responders/ nonresponders",colnames(data_sumtable))
 colnames(data_sumtable) <- gsub("Definition of treatment outcome","Definition treatment outcome",colnames(data_sumtable))
 colnames(data_sumtable) <- gsub("Type of functional-connectivity-based input features","Input features",colnames(data_sumtable))
@@ -171,12 +178,86 @@ flextable::save_as_docx(apa_sumtable, path = "plots/table_1_extraction.docx", pr
 
 data_sumtable
 ```
+# RQ 1: Accuracy - meta-analysis
+## Add variables to data_acc
+```{r}
+data_acc_meta <- merge(data_acc, data_sumtable[,c("Study","Primary disorder")])
+data_acc_meta$`Primary disorder` <- gsub(" & BPD","",data_acc_meta$`Primary disorder`)
+data_acc_meta$`Primary disorder` <- gsub("\\(partial\\) ","",data_acc_meta$`Primary disorder`)
+data_acc_meta$`Primary disorder`
+colnames(data_acc_meta) <- gsub(" ","_",colnames(data_acc_meta))
 
-# RQ 1: How well can treatment outcome in internalizing disorders be predicted by features based on resting-state functional connectivities? 
+studies_low_ROB <- c(data_PROBAST[data_PROBAST$`4.8 Were model overfitting and optimism in model performance accounted for?` == "Y",c("Study")])$Study
+data_acc_meta$ROB <- ifelse(data_acc_meta$Study %in% studies_low_ROB, "low risk of data leakage", "high risk of data leakage")
+```
+
+## Pooling accuracy values
+```{r}
+library(meta)
+# Add column with correctly classified classes per study
+data_acc_meta$n_correct_cases <- round(data_acc_meta$Balanced_acc_final * 0.01 * data_acc_meta$Sample_size,0)
+
+data_acc_meta$Treatment <- c("rTMS","medication","rTMS","medication","ECT","medication","medication and psychotherapy","ECT","medication","ECT","medication","psychotherapy","psychotherapy")
+
+# Pool proportions
+m.prop <- metaprop(event = n_correct_cases,
+                   n = Sample_size,
+                   studlab = Study, # column for study name
+                   data = data_acc_meta,
+                   method = "Inverse",
+                   method.ci = "WS",
+                   sm = "PFT", # Freeman-Turkey Double Arcsine transformation ODER Arcsine transformation
+                   fixed = FALSE,
+                   random = TRUE,
+                   hakn = TRUE, # Hartung-Knapp adjustment
+                   title = "Predicting treatment response")
+summary(m.prop)
+
+# Forest plot
+forest.meta(m.prop, 
+            sortvar = TE,
+            prediction = TRUE, 
+            print.tau2 = FALSE,
+            rightlabs = c("Balanced accuracy", "95%-CI", "Weight")
+            #leftlabs = c("Study",)
+            )
+
+funnel.meta(m.prop)
+metabias(m.prop)
+metabias(m.prop, method.bias = "peters")
+```
+
+## meta regression
+```{r}
+update.meta(m.prop, 
+            subgroup = Treatment, 
+            tau.common = FALSE)
+
+update.meta(m.prop, 
+            subgroup = Primary_disorder, 
+            tau.common = FALSE)
+
+update.meta(m.prop, 
+            subgroup = ROB, 
+            tau.common = FALSE)
+
+m.prop.reg <- metareg(m.prop, ~Sample_size)
+
+m.prop.reg 
+bubble(m.prop.reg, studlab = TRUE)
+```
+
+The type of treatment has no substantial effect on the accuracy or heterogeneity.
+MDD alone is not much different.
+Risk of dataleakage has small effect.
+The sample size has a substantial effect on the accuracy.
+
+
+# RQ 1: Accuracy
 
 ## Calculate reported and balanced accuracy of the best model
-The mean accuracy of the best model per study is  `r round(mean(data_acc$Accuracy_rounded))`%, with a range of `r min(data_acc$Accuracy_rounded)`% - `r max(data_acc$Accuracy_rounded)`%.
-The "balanced mean accuracy" is `r round(mean(data_acc$Accuracy_controlled))`%, with a range of `r min(data_acc$Accuracy_controlled)`% - `r max(data_acc$Accuracy_controlled)`%.
+The mean accuracy of the best model per study is  `r round(mean(data_acc$Reported_Reported_Accuracy_rounded))`%, with a range of `r min(data_acc$Reported_Reported_Accuracy_rounded)`% - `r max(data_acc$Reported_Reported_Accuracy_rounded)`%.
+The "balanced mean accuracy" is `r round(mean(data_acc$Balanced_acc_final))`%, with a range of `r min(data_acc$Balanced_acc_final)`% - `r max(data_acc$Balanced_acc_final)`%.
 
 ## Plot reported and balanced accuracy without (1) and with risk of data leakage (2)
 ```{r Plot accuracy of treatment outcome prediction}
@@ -186,10 +267,10 @@ studies_low_ROB <- c(data_PROBAST[data_PROBAST$`4.8 Were model overfitting and o
 data_acc$ROB <- ifelse(data_acc$Study %in% studies_low_ROB, "low risk of data leakage", "high risk of data leakage")
 
 # Bring data_acc into longformat
-data_acc_long <- reshape(data = data_acc, idvar = "Study", varying = c("Accuracy_rounded","Accuracy_controlled"), v.name = "metric", times = c("Accuracy_rounded","Accuracy_controlled"), new.row.names = 1:1000, direction = "long")
+data_acc_long <- reshape(data = data_acc, idvar = "Study", varying = c("Reported_Reported_Accuracy_rounded","Balanced_acc_final"), v.name = "metric", times = c("Reported_Reported_Accuracy_rounded","Balanced_acc_final"), new.row.names = 1:1000, direction = "long")
 
 data_acc_long$time <- as.factor(data_acc_long$time)
-data_acc_long$time <- factor(data_acc_long$time, levels = c("Accuracy_rounded", "Accuracy_controlled"))
+data_acc_long$time <- factor(data_acc_long$time, levels = c("Reported_Accuracy_rounded", "Balanced_acc_final"))
 
 # Plot data without risk of bias 
 labels_acc_germ <- c("berichtete Genauigkeit","für Zufallsniveau\nkontrollierte Genauigkeit")
@@ -248,12 +329,12 @@ pos_half_vert = 0.4
 pos_half_horiz = 0.2
 
 # Plot sample size and balanced accuracy
-plot_acc_contr_sample_size <- ggplot(data = data_acc, aes(y =`Accuracy_controlled`, x = `Sample_size`))+
+plot_acc_contr_sample_size <- ggplot(data = data_acc, aes(y =`Balanced_acc_final`, x = `Sample_size`))+
     theme(text = element_text(family = "Arial"))+
   geom_point(aes(color = `Treatment`), size = size_dots)+ #draw point for all treatments
   geom_text(data = data_acc[data_acc$Treatment == "medication and psychotherapy",],
             label = "\u25D7", 
-            aes(`Sample_size`, `Accuracy_controlled`,colour = "medication"),  
+            aes(`Sample_size`, `Balanced_acc_final`,colour = "medication"),  
             size= size_half, 
             hjust = pos_half_horiz,
             vjust = pos_half_vert,
@@ -261,7 +342,7 @@ plot_acc_contr_sample_size <- ggplot(data = data_acc, aes(y =`Accuracy_controlle
             key_glyph = draw_key_blank)+
    geom_text(data = data_acc[data_acc$Treatment == "medication and psychotherapy",],
              label = "\u25D6", 
-             aes(`Sample_size`, `Accuracy_controlled`,colour = "psychotherapy"),  
+             aes(`Sample_size`, `Balanced_acc_final`,colour = "psychotherapy"),  
              size= size_half, 
              hjust = pos_half_horiz + 0.57,
              vjust= pos_half_vert,
@@ -294,15 +375,46 @@ dev.off()
 ggsave("plots/figure_2_acc_sample_size.svg",plot_combined, height = 3.5)
 ```
 
-# RQ 2.1: Which approaches are taken to draw inferences about the predictive value of specific features? 
+# RQ 2.1: Approaches to evaluate predictive value 
 
-## Remove studies that did not calculate feature importance
+## Remove studies that did not assess predictive value
 ```{r Clean data sheet}
 data_imp_features_clean <- data_imp_features[!(is.na(data_imp_features$Features_with_high_predictive_value)),]
 ```
 `r nrow(data_imp_features[!(is.na(data_imp_features$"Features_with_high_predictive_value")),])` out of 13 studies made a statement on feature importance.
 
-## Plot approaches used for calculation of feature importance
+## Table S2
+```{r}
+# Reduce to columns needed
+data_imp_features_table <- data_imp_features_clean[,c("Study","Way_of_measuring_predictive_value", "Way_of_measuring_predictive_value_categories")]
+
+colnames(data_imp_features_table)[colnames(data_imp_features_table) == "Way_of_measuring_predictive_value_categories"] <- "Category"
+
+# Turn hyphen into space
+colnames(data_imp_features_table) <- gsub("_"," ",colnames(data_imp_features_table))
+
+# Flextable
+set_flextable_defaults(font.family = "Arial",
+font.size = 8,
+padding.bottom = 3,
+padding.top = 3,
+padding.left = 0.5,
+paddings.right = 0.5,
+#theme_fun = "theme_apa",
+theme_fun = NULL,
+text.align = "center",
+line_spacing = 1)
+
+ft <- flextable(data_imp_features_table)
+
+ft <- set_table_properties(ft, layout = "autofit")
+ft <- autofit(ft)
+
+flextable::save_as_docx(ft, path = "plots/RQ2.1_table.docx", pr_section = format_table_portrait)
+
+```
+
+## Plot approaches predictive value
 ```{r Approaches used for calculation of feature importance}
 
 # Add new rows when two categories were chosen
@@ -331,10 +443,33 @@ plot_measure_imp <- ggplot2::ggplot(data = data_imp_features_clean_way,aes(x = `
 ggplotly(plot_measure_imp)
 ```
 
-# RQ 2.2: Which brain regions are important for the prediction of treatment outcome? 
+# RQ 2.2: Important features
+## Table S3: Level of reporting brain regions
+```{r}
+# Reduce_to_columns_needed
+data_imp_features_level_table <- data_imp_features_clean[,c("Study","Type_of_FC-based_input_features","Features_with_high_predictive_value","Resolution_of_reporting_features_with_high_predictive_value")]
+
+# Change colnames
+colnames(data_imp_features_table)[colnames(data_imp_features_table) == "Type_of_FC-based_input_features"] <- "FC-based input features"
+
+# Turn hyphen into space
+colnames(data_imp_features_level_table) <- gsub("_"," ",colnames(data_imp_features_level_table))
+
+# Remove unnecessary information
+data_imp_features_level_table$`Type of FC-based input features` <- gsub("[(]wb:.*)","",data_imp_features_level_table$`Type of FC-based input features`)
+
+
+
+ft <- flextable(data_imp_features_level_table)
+
+ft <- set_table_properties(ft, layout = "autofit")
+ft <- autofit(ft)
+
+flextable::save_as_docx(ft, path = "plots/RQ2.2_resolution.docx", pr_section = format_table)
+```
 
 ## Bring data into long-format
-```{r Which features have predictive value?}
+```{r Important_features}
 
 # Get column names
 cols_tested <- colnames(data_imp_features_clean )[endsWith(colnames(data_imp_features_clean ),"_tested")]
@@ -448,8 +583,38 @@ dev.off()
 ggsave("plots/figure_3_predictive_value.svg",plot_feat_pred_value_2,height = 4)
 ```
 
-# RQ 3: Which approaches are taken to reduce the large amount of theoretically initially available functional connectivities to a small set of features to be used in the final classifier(s)? 
+# RQ 3: Approaches to reduce the number of features 
+## Table S4
+```{r}
+# Reduce to important columns
+data_dimreduction_table <- data_dimreduction[, !(names(data_dimreduction) %in% c("Year", "Comments")), drop = FALSE]
 
+colnames(data_dimreduction_table ) <- gsub("_"," ",colnames(data_dimreduction_table ))
+
+# Flextable
+set_flextable_defaults(font.family = "Arial",
+font.size = 8,
+padding.bottom = 3,
+padding.top = 3,
+padding.left = 0.5,
+paddings.right = 0.5,
+#theme_fun = "theme_apa",
+theme_fun = NULL,
+text.align = "center",
+line_spacing = 1)
+
+ft <- flextable(data_dimreduction_table) 
+
+ft <- rotate(ft, j = 3:9, rotation = "btlr", part = "header", align = "center")
+ft <- height(ft, height = 1.5, part = "header")
+ft <- hrule(ft, rule = "exact", part = "header")
+
+ft <- set_table_properties(ft, layout = "autofit")
+
+flextable::save_as_docx(ft, path = "plots/RQ3_table.docx", pr_section = format_table_portrait)
+```
+
+## Plot
 ```{r RQ 3 Approaches used to reduce the number of input features}
 
 # Bring data into longformat
@@ -479,9 +644,45 @@ ggplotly(plot_reduction_extraction)
 ```
 
 # RQ 4: PROBAST rating
+## Table
+```{r}
+# Prepare dataset
+# Remove columns that contain "comments"
+cols_no_comments <- colnames(data_PROBAST)[!grepl("comments",colnames(data_PROBAST))]
+data_PROBAST_table <- data_PROBAST[,cols_no_comments]
 
+# Transpose table
+PROBAST_transposed <- t(data_PROBAST_table)
+PROBAST_transposed <- as.data.frame(PROBAST_transposed)
+colnames(PROBAST_transposed) <- PROBAST_transposed[1, ]
+PROBAST_transposed <- PROBAST_transposed[-1, ]
+# Use rownames as first column (as flextable ignores rownames)
+PROBAST_transposed <- PROBAST_transposed %>%
+  tibble::rownames_to_column(var = "Question")
+
+# Flextable settings
+set_flextable_defaults(font.family = "Arial",
+font.size = 8,
+padding.bottom = 3,
+padding.top = 3,
+padding.left = 0.5,
+paddings.right = 0.5,
+#theme_fun = "theme_apa",
+theme_fun = NULL,
+text.align = "center",
+line_spacing = 1)
+
+# Create flextable
+ft <- flextable(PROBAST_transposed)
+
+ft <- set_table_properties(ft, width = 1, layout = "autofit")
+ft <- autofit(ft)
+
+flextable::save_as_docx(ft, path = "plots/PROBAST_table.docx", pr_section = format_table)
+```
+
+## Plot 
 ```{r Plot_PROBAST}
-
 # Final rating columns
 cols_final_rating <- c("Final rating domain 1", "Final rating domain 2", "Final rating domain 3", "Final rating domain 4", "Final rating")
 
