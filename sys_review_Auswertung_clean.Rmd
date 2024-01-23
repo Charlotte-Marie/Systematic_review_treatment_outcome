@@ -8,13 +8,15 @@ output:
       number_sections: yes
       code_folding: hide
       fig_caption: yes
+  pdf_document:
+      dev: cairo_pdf
 ---
 
 ```{r Setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 
 # Reinstall all of the packages as declared in renv.lock
-# renv::restore()
+#renv::restore()
 library(dplyr)
 
 #library(knitr)
@@ -34,15 +36,22 @@ library(ggbeeswarm)
 # General settings for ggplot
 # Specific fonts are needed for figure 1 (Lucida Helvetica Unicode)
 library(extrafont)
-#font_import() 
-loadfonts(device = "win")
+#font_import()
+#loadfonts(device = "win")
 loadfonts(device = "pdf")
 
 size_text = 10
-theme_set(theme_bw() + theme(text = element_text(size =size_text, family = "Helvetica"),
+theme_set(theme_minimal() +  # Use a minimal theme (or choose another theme)
+  # theme(
+  #   panel.grid = element_blank(),  # Remove grid lines
+  #   panel.border = element_blank(),  # Remove panel borders
+  #   axis.line = element_blank(),  # Remove axis lines
+  #   axis.ticks = element_blank()  # Remove axis ticks
+  # ) + 
+    theme(text = element_text(size =size_text, family = "Helvetica"),
                              axis.title = element_text(size =size_text, family = "Helvetica"), plot.title = element_text(size = size_text, family = "Helvetica"),
                              axis.text = element_text(size = size_text, family = "Helvetica"),
-                             legend.text =  element_text(size =size_text-1, family = "Helvetica")))
+                             legend.text =  element_text(size =size_text, family = "Helvetica")))
 # Set default for geom_text
 update_geom_defaults("text", list(size = 4))
 
@@ -61,6 +70,9 @@ margins <- page_mar(
 )
 format_table_portrait <- prop_section(
   page_size = page_size(orient = "portrait"),
+  page_margins = margins)
+format_table_wide <- prop_section(
+  page_size = page_size(orient = "landscape"),
   page_margins = margins)
 ```
 
@@ -179,17 +191,91 @@ margins <- page_mar(
   footer = 0.5,
   gutter = 0.5
 )
-format_table <- prop_section(
-  page_size = page_size(orient = "landscape"),
-  page_margins = margins)
 
-flextable::save_as_docx(apa_sumtable, path = "plots/table_1_extraction.docx", pr_section = format_table)
+#flextable::save_as_docx(apa_sumtable, path = "plots/Table_1_characteristics.docx", pr_section = format_table_wide)
 
 data_sumtable
 ```
 # RQ 1: Meta-analysis of balanced accuracy values
-## Figure 1a: Visualize differences between balanced and reported accuracies
+The mean raw accuracy of the best model per study is  `r round(mean(data_acc$Reported_Accuracy_rounded))`%, with a range of `r min(data_acc$Reported_Accuracy_rounded)`% - `r max(data_acc$Reported_Accuracy_rounded)`%.
+The "balanced mean accuracy" is `r round(mean(data_acc$Balanced_acc_final))`%, with a range of `r min(data_acc$Balanced_acc_final)`% - `r max(data_acc$Balanced_acc_final)`%.
+
+```{r Plot accuracy of treatment outcome prediction}
+
+# Add column for ROB to data_acc using information from 4.8. in data_PROBAST
+studies_low_ROB <- c(data_PROBAST[data_PROBAST$`4.8 Were model overfitting and optimism in model performance accounted for?` == "Y",c("Study")])$Study
+data_acc$ROB <- ifelse(data_acc$Study %in% studies_low_ROB, "low risk of data leakage", "high risk of data leakage")
+
+# Bring data_acc into longformat
+data_acc_long <- reshape(data = data_acc, idvar = "Study", varying = c("Reported_Accuracy_rounded","Balanced_acc_final"), v.name = "metric", times = c("Reported_Accuracy_rounded","Balanced_acc_final"), new.row.names = 1:1000, direction = "long")
+
+#data_acc_long$time <- as.factor(data_acc_long$time)
+data_acc_long$time <- factor(data_acc_long$time, levels = c("Balanced_acc_final", "Reported_Accuracy_rounded"), labels = c("balanced accuracy","raw accuracy"))
+
+```
+
+## Figure 2a: Visualize differences between balanced and raw accuracies
 ```{r}
+### Plot raw and balanced acc
+# New category for studies where balanced and raw accuracy are the same
+
+# Remove studies that did not need a new calculation
+studies_reported <- c(data_acc[data_acc$Technique_of_calculating_balanced_acc == "reported","Study"])$Study
+data_acc_long <- data_acc_long[!(data_acc_long$Study %in% studies_reported), ]
+
+# Mark studies were we used the proxy of balanced acc
+studies_proxy <- c(data_acc[data_acc$Technique_of_calculating_balanced_acc == "proxy",c("Study")])$Study # Add your study names
+
+# Iterate over each study and modify the time column
+for (study_name in studies_proxy) {
+  data_acc_long$Study[data_acc_long$Study == study_name] <- paste0(data_acc_long$Study[data_acc_long$Study == study_name], "*")
+}
+
+size_circle = 3
+size_half = size_circle * 1.5
+pos_half_vert = 0.4 # The higher, the lower the point
+pos_half_horiz = 0.25 # The higher, the more left
+
+data_acc_long$Study <- factor(data_acc_long$Study, levels = rev(unique(data_acc_long$Study)))
+
+colour_palette = brewer.pal(2, "Oranges")
+color_range <- colorRampPalette(brewer.pal(9, "Oranges"))(100)
+
+# Choose two values that are far from each other
+color1 <- color_range[30]  # Adjust index as needed
+color2 <- color_range[70] 
+
+colour_palette = c(color1,color2)
+plot_raw_bal_acc <- ggplot(data_acc_long, aes(x = Study, y = metric, color = time,group = Study)) +
+  geom_point(size = size_circle) +
+  geom_line(color = "black", size = 0.3) +
+  scale_color_manual(values = colour_palette)+
+    geom_text(data = data_acc[data_acc$Study %in% c("Drysdale, 2017","Pei, 2020"),],
+            label = "\u25D7",
+            aes(`Study`, `Balanced_acc_final`,colour = "raw accuracy"),
+            size = size_half,
+            hjust = pos_half_horiz,
+            vjust = pos_half_vert,
+            family = "Lucida Sans Unicode",
+            key_glyph = draw_key_blank)+
+   geom_text(data = data_acc[data_acc$Study %in% c("Drysdale, 2017","Pei, 2020"),],
+             label = "\u25D6",
+             aes(`Study`, `Balanced_acc_final`,colour = "balanced accuracy"),
+             size= size_half,
+             hjust = pos_half_horiz + 0.57,
+             vjust= pos_half_vert,
+             family = "Lucida Sans Unicode",
+             key_glyph = draw_key_blank)+
+  labs(x = "", y = "Accuracy in %") +
+  theme(legend.position = "bottom")+
+  #theme(x.axis.text = element_text(size = size_text-1, family = "Helvetica"))+
+  theme(legend.title=element_blank()) +
+  guides(color = guide_legend(nrow = 2, byrow = TRUE))+
+  coord_flip()
+
+ggsave("plots/plot_raw_bal_acc.svg",plot_raw_bal_acc, height = 4)
+
+plot_raw_bal_acc
 ```
 
 ## Add variables to data_acc
@@ -218,29 +304,31 @@ m.prop <- metaprop(event = n_correct_cases,
                    n = Sample_size,
                    studlab = Study, # column for study name
                    data = data_acc_meta,
-                   method = "Inverse",
-                   method.ci = "WS",
-                   sm = "PFT", # Freeman-Turkey Double Arcsine transformation ODER Arcsine transformation
+                   method = "Inverse", # Inverse variance method
+                   method.ci = "CP", # Clopper-interval to calculate the CI for each study
+                   method.tau = "REML", # restricted maximum likelihood estimator for tau
+                   sm = "PFT", # Freeman-Turkey Double Arcsine transformation
                    fixed = FALSE,
                    random = TRUE,
-                   hakn = TRUE, # Hartung-Knapp adjustment
+                   hakn = TRUE, # Hartung-Knapp adjustment for calculating the CI around the pooled effect size
                    title = "Predicting treatment response")
 summary(m.prop)
 ```
 
-## Figure 2: Forest plot
+## Figure 3: Forest plot
 ```{r}
 # Forest plot
-svg(file='plots/forestplot.svg', width = 9, height = 5)
+#svg(file='plots/forestplot.svg', width = 8, height = 5)
+pdf("plots/figure_3_forestplot.pdf", width = 8, height = 5)
 forest_plot <- forest(m.prop, 
        sortvar = TE,
-       prediction = TRUE, 
+       fontsize = 12,
+       prediction = FALSE, # Do not show prediction accuracy
        print.tau2 = FALSE,
-       rightlabs = c("Balanced accuracy", "95%-CI", "Weight")
+       rightlabs = c("Balanced\naccuracy", "95%-CI", "Weight")
        #leftlabs = c("Study",)
        )
 dev.off() 
-forest_plot
 ```
 
 ## Optional: Publication bias
@@ -251,7 +339,7 @@ metabias(m.prop)
 metabias(m.prop, method.bias = "peters")
 ```
 
-## Meta regression
+## Meta regression with subgroups
 ```{r}
 update(m.prop, 
             subgroup = Treatment, 
@@ -264,48 +352,106 @@ update(m.prop,
 update(m.prop, 
             subgroup = ROB, 
             tau.common = FALSE)
+```
+Treatment, primary disorder, and risk of data leakage cannot explain the between study heterogeneity.
 
-m.prop.reg <- metareg(m.prop, ~Sample_size)
+## Meta regression with sample size (continuous variables)
+```{r}
+m.prop.reg <- metareg(m.prop, ~Sample_size, hakn = TRUE)
 
-m.prop.reg 
+# Try different types of bubble plots
 bubble(m.prop.reg, studlab = TRUE)
+
+# Retransform accuracy values
+regplot(m.prop.reg, transf = transf.ilogit, mod = "Sample_size")
+regplot(m.prop.reg, transf = transf.ipft.hm, mod = "Sample_size", targ = list(ni=m.prop.reg[["data"]][[".n"]]))
+
+m.prop.reg
 ```
 
-The type of treatment has no substantial effect on the accuracy or heterogeneity.
-MDD alone is not much different.
-Risk of data leakage has small effect.
 The sample size has a substantial effect on the accuracy.
 
+## Figure 2b: Sample size and balanced accuracy for each treatment type
+The mean sample size was N = `r round(mean(data_acc$Sample_size),0)`, with a range of [`r min(data_acc$Sample_size)`, `r max(data_acc$Sample_size)`].
+```{r Plot sample size and balanced accuracy}
+# Add weigth
+m.prop.reg$data$weight = weights(m.prop.reg)
 
-# Optional RQ 1: Focus on mean (approach before including the meta-analysis)
+# Calculate predicted values to retransform the regression based on transformed proportions back to untransformed proportions
+mod_values <- seq(min(m.prop.reg$data$Sample_size), max(m.prop.reg$data$Sample_size), length.out = 100)
+predicted_values <- predict(m.prop.reg, newmods = (Sample_size = mod_values), transf = transf.ipft.hm, targ = list(ni=m.prop.reg[["data"]][[".n"]]))
 
-## Calculate reported and balanced accuracy of the best model
-The mean raw accuracy of the best model per study is  `r round(mean(data_acc$Reported_Accuracy_rounded))`%, with a range of `r min(data_acc$Reported_Accuracy_rounded)`% - `r max(data_acc$Reported_Accuracy_rounded)`%.
-The "balanced mean accuracy" is `r round(mean(data_acc$Balanced_acc_final))`%, with a range of `r min(data_acc$Balanced_acc_final)`% - `r max(data_acc$Balanced_acc_final)`%.
+# Add column for type of treatment manually to data_acc
+data_acc$Treatment <- c("rTMS","medication","rTMS","medication","ECT","medication","medication and psychotherapy","ECT","medication","ECT","medication","psychotherapy","psychotherapy")
 
-## Plot reported and balanced accuracy without (1) and with risk of data leakage (2)
-```{r Plot accuracy of treatment outcome prediction}
+# Plot settings
+pos_half_vert = 0.3 # The higher, the lower the point
+pos_half_horiz = 0.2 # The higher, the more left
 
-# Add column for ROB to data_acc using information from 4.8. in data_PROBAST
-studies_low_ROB <- c(data_PROBAST[data_PROBAST$`4.8 Were model overfitting and optimism in model performance accounted for?` == "Y",c("Study")])$Study
-data_acc$ROB <- ifelse(data_acc$Study %in% studies_low_ROB, "low risk of data leakage", "high risk of data leakage")
+range_min = 3
+range_max = 8
+size_half = range_min + 21 * ((range_max-range_min)/(144-18)) + 1.7 # 21 = sample size of Schultz, 144-18 = range of sample size
 
-# Bring data_acc into longformat
-data_acc_long <- reshape(data = data_acc, idvar = "Study", varying = c("Reported_Accuracy_rounded","Balanced_acc_final"), v.name = "metric", times = c("Reported_Accuracy_rounded","Balanced_acc_final"), new.row.names = 1:1000, direction = "long")
+m.prop.reg$data$weight
 
-data_acc_long$time <- as.factor(data_acc_long$time)
-data_acc_long$time <- factor(data_acc_long$time, levels = c("Reported_Accuracy_rounded", "Balanced_acc_final"))
+# Plot sample size and balanced accuracy
+plot_acc_contr_sample_size <- ggplot(m.prop.reg$data, aes(x = Sample_size, y = Balanced_acc_final, color = Treatment))+
+    theme(text = element_text(family = "Arial"))+
+  geom_point(aes(size=m.prop.reg$data$weight))+ 
+  scale_size(range = c(range_min,range_max),guide = "none") +
+  geom_line(data = data.frame(Sample_size = mod_values, yi = predicted_values), aes(x = Sample_size, y = 100 *(yi.pred)), color = "black", size = 0.5) +
+  geom_text(data = data_acc[data_acc$Treatment == "medication and psychotherapy",],
+            label = "\u25D7", 
+            aes(`Sample_size`, `Balanced_acc_final`,colour = "medication"),  
+            size= size_half, 
+            hjust = pos_half_horiz,
+            vjust = pos_half_vert,
+            family = "Lucida Sans Unicode",
+            key_glyph = draw_key_blank)+
+   geom_text(data = data_acc[data_acc$Treatment == "medication and psychotherapy",],
+             label = "\u25D6", 
+             aes(`Sample_size`, `Balanced_acc_final`,colour = "psychotherapy"),  
+             size= size_half, 
+             hjust = pos_half_horiz + 0.55,
+             vjust= pos_half_vert,
+             family = "Lucida Sans Unicode",
+             key_glyph = draw_key_blank)+
+  scale_color_manual(
+    breaks = c("medication", "ECT","psychotherapy","rTMS"),
+    values = c("ECT" = color_pal[1], 
+               "medication" = color_pal[2], 
+               "medication and psychotherapy" = "grey",
+               "psychotherapy" = color_pal[3], 
+               "rTMS" = color_pal[4])
+  ) + 
+ # Plot meta-regression slope
+  labs(y = "Balanced accuracy in %", x = "Sample size")+
+  scale_x_continuous(limits=c(0,147), 
+                     breaks = c(0,25,50,75,100,125,150)) +
+  theme(legend.position = "bottom")+
+  theme(legend.title=element_blank()) +
+  guides(color = guide_legend(nrow = 2, byrow = TRUE))
+
+ggsave("plots/plot_samplesize.svg",plot_acc_contr_sample_size, height = 4)
+
+plot_acc_contr_sample_size
 ```
 
-### Plot raw and balanced acc
-```{r }
-ggplot(data_acc_long, aes (x = Study, y = metric, color = time)) +
-  geom_point(size = 4) +
-  coord_flip()
-```
-
+## Figure 2: Combine plots
 ```{r}
+# Combine both plots (Accuracy with risk of bias and Sample size and balanced accuracy)
+plot_combined <- plot_raw_bal_acc + plot_spacer() + plot_acc_contr_sample_size + plot_annotation(tag_levels = "A") + plot_layout(width = c(1,0.05,2), ncol = 3)
 
+# Save as pdf for journal
+cairo_pdf("plots/figure_2_acc_meth_sample_size.pdf", height = 3.5)
+plot_combined
+dev.off()
+
+ggsave("plots/figure_2_acc_meth_sample_size.svg",plot_combined, height = 3.5)
+```
+
+## Optional: Plot raw and balanced accuracy without (1) and with risk of data leakage (2)
+```{r}
 # Plot data without risk of bias 
 labels_acc_germ <- c("berichtete Genauigkeit","für Zufallsniveau\nkontrollierte Genauigkeit")
 labels_acc_eng <- c("reported\naccuracy","balanced\naccuracy")
@@ -350,70 +496,6 @@ ggsave("plots/violin_acc_normal_and_controlled.svg", plot_acc_contr_violin)
 ggsave("plots/violin_acc_normal_and_controlled_rob.svg",plot_acc_contr_violin_rob, height = 4)
 ```
 
-## Figure 2b: Sample size and balanced accuracy for each treatment type
-The mean sample size was N = `r round(mean(data_acc$Sample_size),0)`, with a range of [`r min(data_acc$Sample_size)`, `r max(data_acc$Sample_size)`].
-```{r Plot sample size and balanced accuracy}
-# Add weights from the random effects model
-data_acc$weight <- m.prop[["w.random"]]
-
-# Add column for type of treatment manually to data_acc
-data_acc$Treatment <- c("rTMS","medication","rTMS","medication","ECT","medication","medication and psychotherapy","ECT","medication","ECT","medication","psychotherapy","psychotherapy")
-
-# Plot settings
-size_half = size_dots * 1.5
-pos_half_vert = 0.4
-pos_half_horiz = 0.2
-
-# Plot sample size and balanced accuracy
-plot_acc_contr_sample_size <- ggplot(data = data_acc, aes(y =`Balanced_acc_final`, x = `Sample_size`, size = `weight`))+
-    theme(text = element_text(family = "Arial"))+
-  geom_point(aes(color = `Treatment`))+ #draw point for all treatments
-  scale_size(range = c(3,8)) +
-  geom_text(data = data_acc[data_acc$Treatment == "medication and psychotherapy",],
-            label = "\u25D7", 
-            aes(`Sample_size`, `Balanced_acc_final`,colour = "medication"),  
-            size= size_half, 
-            hjust = pos_half_horiz,
-            vjust = pos_half_vert,
-            family = "Lucida Sans Unicode",
-            key_glyph = draw_key_blank)+
-   geom_text(data = data_acc[data_acc$Treatment == "medication and psychotherapy",],
-             label = "\u25D6", 
-             aes(`Sample_size`, `Balanced_acc_final`,colour = "psychotherapy"),  
-             size= size_half, 
-             hjust = pos_half_horiz + 0.57,
-             vjust= pos_half_vert,
-             family = "Lucida Sans Unicode",
-             key_glyph = draw_key_blank)+
-  scale_color_manual(
-    breaks = c("medication", "ECT","psychotherapy","rTMS"),
-    values = c("ECT" = color_pal[1], "medication" = color_pal[2], "medication and psychotherapy" = "grey","psychotherapy" = color_pal[3], "rTMS" = color_pal[4])
-  )+
-  geom_smooth(method = "lm", color = "black", size = 0.5)+
-  labs(y = "Balanced accuracy in %", x = "Sample size")+
-  scale_x_continuous(limits=c(0,147), breaks = c(0,25,50,75,100,125,150)) +
-    theme(legend.position = "bottom")+
-  theme(legend.title=element_blank()) +
-  guides(color = guide_legend(nrow = 2, byrow = TRUE))
-
-ggsave("plots/plot_samplesize.svg",plot_acc_contr_sample_size, height = 4)
-
-plot_acc_contr_sample_size
-```
-
-## Figure 2: Combine plots
-```{r}
-# Combine both plots (Accuracy with risk of bias and Sample size and balanced accuracy)
-plot_combined <- plot_acc_contr_violin_rob + plot_acc_contr_sample_size + plot_annotation(tag_levels = "A") + plot_layout(ncol = 2)
-
-plot_combined
-
-cairo_pdf("plots/figure_2_acc_sample_size.pdf", height = 3.5)
-plot_combined
-dev.off()
-ggsave("plots/figure_2_acc_sample_size.svg",plot_combined, height = 3.5)
-```
-
 # RQ 2.1: Approaches to evaluate predictive value 
 
 ## Remove studies that did not assess predictive value
@@ -422,7 +504,7 @@ data_imp_features_clean <- data_imp_features[!(is.na(data_imp_features$Features_
 ```
 `r nrow(data_imp_features[!(is.na(data_imp_features$"Features_with_high_predictive_value")),])` out of 13 studies made a statement on feature importance.
 
-## Table S2
+## Table S1: Approaches to assess predictive value
 ```{r}
 # Reduce to columns needed
 data_imp_features_table <- data_imp_features_clean[,c("Study","Way_of_measuring_predictive_value", "Way_of_measuring_predictive_value_categories")]
@@ -486,27 +568,38 @@ ggplotly(plot_measure_imp)
 ```
 
 # RQ 2.2: Important features
-## Table S3: Level of reporting brain regions
+## Table S2: Level of resolution of reporting brain regions
 ```{r}
 # Reduce_to_columns_needed
 data_imp_features_level_table <- data_imp_features_clean[,c("Study","Type_of_FC-based_input_features","Features_with_high_predictive_value","Resolution_of_reporting_features_with_high_predictive_value")]
 
 # Change colnames
-colnames(data_imp_features_table)[colnames(data_imp_features_table) == "Type_of_FC-based_input_features"] <- "FC-based input features"
+colnames(data_imp_features_level_table)[colnames(data_imp_features_level_table) == "Type_of_FC-based_input_features"] <- "FC-based input features"
 
 # Turn hyphen into space
 colnames(data_imp_features_level_table) <- gsub("_"," ",colnames(data_imp_features_level_table))
 
 # Remove unnecessary information
-data_imp_features_level_table$`Type of FC-based input features` <- gsub("[(]wb:.*)","",data_imp_features_level_table$`Type of FC-based input features`)
+data_imp_features_level_table$`FC-based input features` <- gsub("[(]wb:.*)","",data_imp_features_level_table$`FC-based input features`)
 
+# Flextable
+set_flextable_defaults(font.family = "Arial",
+font.size = 8,
+padding.bottom = 3,
+padding.top = 3,
+padding.left = 0.5,
+paddings.right = 0.5,
+#theme_fun = "theme_apa",
+theme_fun = NULL,
+text.align = "center",
+line_spacing = 1)
 
 ft <- flextable(data_imp_features_level_table)
 
 ft <- set_table_properties(ft, layout = "autofit")
 ft <- autofit(ft)
 
-flextable::save_as_docx(ft, path = "plots/RQ2.2_resolution.docx", pr_section = format_table)
+flextable::save_as_docx(ft, path = "plots/RQ2.2_resolution.docx", pr_section = format_table_wide)
 
 data_imp_features_level_table
 ```
@@ -581,7 +674,7 @@ Regions_high_freq <- temp_dataset$Var1
 data_ROIs_only_tested$Region <- factor(data_ROIs_only_tested$Region, levels = Regions_high_freq)
 ```
 
-## Figure 3: Plot feature importance (predictive value in absolute and relative frequencies) 
+## Figure 4: Plot feature importance (predictive value in absolute and relative frequencies) 
 This plot shows whose connectivities were particularily important for the prediction of TR.
 
 ```{r Bar plot}
@@ -592,7 +685,7 @@ data_ROIs_only_tested_high_freq <- data_ROIs_only_tested[data_ROIs_only_tested$R
 plot_feat_pred_value <- ggplot2::ggplot(data = data_ROIs_only_tested_high_freq, aes(x =`Region`, fill= `important`))+
   geom_bar()+
   #theme(axis.text.x = element_text(angle = 90))+
-  scale_fill_brewer(palette = "Oranges")+
+  scale_fill_manual(palette = colour_palette)+
   geom_text(aes(label = scales::percent(..count../tapply(..count.., ..x.. ,sum)[..x..])),stat = "count", position= position_stack(vjust = 0.5))+
   xlab("")+
   coord_flip()
@@ -617,17 +710,17 @@ plot_feat_pred_value_2 <- ggplot(data = data_ROIs_only_tested_high_freq, aes(x =
   #scale_fill_manual()+
   coord_flip()
 
-plot_feat_pred_value_2 
-
-# Save plot
-cairo_pdf("plots/figure_3_predictive_value.pdf", height = 3.5)
+cairo_pdf("plots/figure_4_predictive_value.pdf", height = 4)
 plot_feat_pred_value_2 
 dev.off()
-ggsave("plots/figure_3_predictive_value.svg",plot_feat_pred_value_2,height = 4)
+
+# Save plot
+plot_feat_pred_value_2 
+ggsave("plots/figure_4_predictive_value.svg",plot_feat_pred_value_2,height = 4)
 ```
 
 # RQ 3: Approaches to reduce the number of features 
-## Table S4
+## Table S3
 ```{r}
 # Reduce to important columns
 data_dimreduction_table <- data_dimreduction[, !(names(data_dimreduction) %in% c("Year", "Comments")), drop = FALSE]
@@ -661,7 +754,7 @@ data_dimreduction_table
 
 ## Plot
 ```{r RQ 3 Approaches used to reduce the number of input features}
-
+library(plotly)
 # Bring data into longformat
 cols_reduction <- c("atlas-based_parcellation", "data-driven_parcellation", "theory-based_selection")
 cols_feat_extract <- colnames(data_dimreduction)[!(colnames(data_dimreduction) %in% c("Study","Year","Approach_to_reduce_the_number_of_initially_available_connectivities","Comments",cols_reduction))]
@@ -690,7 +783,7 @@ ggplotly(plot_reduction_extraction)
 ```
 
 # RQ 4: PROBAST rating
-## Table
+## Table S4
 ```{r}
 # Prepare dataset
 # Remove columns that contain "comments"
@@ -723,11 +816,13 @@ ft <- flextable(PROBAST_transposed)
 
 ft <- set_table_properties(ft, width = 1, layout = "autofit")
 ft <- autofit(ft)
+ft <- hline(ft, part = "body", i = c(3, 7, 14, 24), 
+                      border = fp_border(color = "black", width = 1))
 
-flextable::save_as_docx(ft, path = "plots/PROBAST_table.docx", pr_section = format_table)
+flextable::save_as_docx(ft, path = "plots/PROBAST_table.docx", pr_section = format_table_wide)
 ```
 
-## Plot 
+## Figure S1 
 ```{r Plot_PROBAST}
 # Final rating columns
 cols_final_rating <- c("Final rating domain 1 (risk of bias)", "Final rating domain 2 (risk of bias)", "Final rating domain 3 (risk of bias)", "Final rating domain 4 (risk of bias)", "Final rating total (risk of bias)")
@@ -760,7 +855,7 @@ plot_PROBAST <- ggplot(data = data_PROBAST_plot_long,aes(x = `Rating_domain`, fi
   scale_x_discrete(label = labels, breaks = breaks)+
    theme(legend.position = "top")+
   xlab("")+
-  ylab("Relative Accuracy in %")
+  ylab("Relative Frequency in %")
 
 # Save plot
 plot_PROBAST
